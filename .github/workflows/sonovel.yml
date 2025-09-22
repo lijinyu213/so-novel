@@ -1,0 +1,57 @@
+name: So-Novel EPUB Export
+
+on:
+  workflow_dispatch:
+    inputs:
+      book_url:
+        description: '书籍详情页链接 (Book detail page URL)'
+        required: true
+        type: string
+      format:
+        description: '导出格式 (Export format)'
+        required: false
+        default: 'epub'
+        type: choice
+        options:
+        - epub
+        - txt
+        - html
+        - pdf
+
+jobs:
+  export-epub:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build So-Novel CLI
+        run: |
+          mvn clean package -Dmaven.test.skip=true
+
+      - name: Export book using So-Novel CLI
+        run: |
+          echo "开始导出: ${{ inputs.book_url }}"
+          echo "导出格式: ${{ inputs.format }}"
+          java -jar target/app-jar-with-dependencies.jar --url "${{ inputs.book_url }}" --ext "${{ inputs.format }}"
+
+      - name: Upload exported files
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exported-book-${{ inputs.format }}
+          path: |
+            downloads/
+            *.epub
+            *.txt
+            *.html
+            *.pdf
+          retention-days: 30
