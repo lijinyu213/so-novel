@@ -1,0 +1,60 @@
+name: Export EPUB with So-Novel
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Novel directory URL'
+        required: true
+        default: 'https://www.71ge.com/48_48328/'
+      ext:
+        description: 'Output format (epub|txt|html|pdf)'
+        required: true
+        default: 'epub'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install curl and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+      - name: Download latest So-Novel
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/freeok/so-novel/releases/latest | jq -r .tag_name)
+          echo "Latest tag: $LATEST"
+          URL="https://github.com/freeok/so-novel/releases/download/${LATEST}/sonovel-linux_x64.tar.gz"
+          curl -L "$URL" -o sonovel.tar.gz
+          mkdir SoNovel
+          tar -xzf sonovel.tar.gz -C SoNovel --strip-components=1
+      - name: Run So-Novel CLI
+        env:
+          JAVA_OPTS: -Dmode=cli
+        run: |
+          set -e
+          cd SoNovel
+          URL_INPUT="${{ github.event.inputs.url }}"
+          URL_FIXED="${URL_INPUT/m.71ge.com/www.71ge.com}"
+          EXT="${{ github.event.inputs.ext }}"
+          echo "Using URL: $URL_FIXED"
+          echo "Format: $EXT"
+          ./runtime/bin/java -Dmode=cli -jar app.jar --url "$URL_FIXED" --ext "$EXT"
+          cd ..
+          mkdir -p output
+          # Collect any produced ebooks
+          find SoNovel -type f \( -iname "*.epub" -o -iname "*.txt" -o -iname "*.pdf" -o -iname "*.html" \) -print -exec cp -t output {} +
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ebook
+          path: output/*
+      - name: Create GitHub Release (optional)
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: "ebook-${{ github.run_id }}"
+          name: "EPUB export ${{ github.run_id }}"
+          files: output/*
